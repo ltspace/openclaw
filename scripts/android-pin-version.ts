@@ -20,11 +20,11 @@ type CliOptions = {
 };
 
 type PinAndroidVersionResult = {
+  gatewayVersion: string | null;
   previousVersion: string | null;
   previousVersionCode: number | null;
   nextVersion: string;
   nextVersionCode: number;
-  packageVersion: string | null;
   versionFilePath: string;
   syncedPaths: string[];
 };
@@ -133,7 +133,7 @@ export function pinAndroidVersion(params: CliOptions): PinAndroidVersionResult {
   const gatewayVersion = params.fromGateway
     ? resolveGatewayVersionForAndroidRelease(rootDir)
     : null;
-  const packageVersion = gatewayVersion?.packageVersion ?? null;
+  const resolvedGatewayVersion = gatewayVersion?.gatewayVersion ?? null;
   const nextVersion =
     gatewayVersion?.pinnedAndroidVersion ??
     normalizePinnedAndroidVersion(params.explicitVersion ?? "");
@@ -147,11 +147,11 @@ export function pinAndroidVersion(params: CliOptions): PinAndroidVersionResult {
     : [];
 
   return {
+    gatewayVersion: resolvedGatewayVersion,
     previousVersion,
     previousVersionCode,
     nextVersion,
     nextVersionCode,
-    packageVersion,
     versionFilePath,
     syncedPaths,
   };
@@ -161,8 +161,8 @@ export async function main(argv: string[]): Promise<number> {
   try {
     const options = parseArgs(argv);
     const result = pinAndroidVersion(options);
-    const sourceText = result.packageVersion
-      ? ` from gateway version ${result.packageVersion}`
+    const sourceText = result.gatewayVersion
+      ? ` from mobile gateway version ${result.gatewayVersion}`
       : "";
     process.stdout.write(
       `Pinned Android version to ${result.nextVersion} (${result.nextVersionCode})${sourceText}.\n`,

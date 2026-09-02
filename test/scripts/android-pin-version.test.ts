@@ -72,7 +72,7 @@ describe("pinAndroidVersion", () => {
     expect(result.previousVersionCode).toBe(2026060201);
     expect(result.nextVersion).toBe("2026.6.5");
     expect(result.nextVersionCode).toBe(2026060501);
-    expect(result.packageVersion).toBeNull();
+    expect(result.gatewayVersion).toBeNull();
     expect(resolveAndroidVersion(rootDir).canonicalVersion).toBe("2026.6.5");
     expect(
       fs.readFileSync(path.join(rootDir, "apps", "android", "version.json"), "utf8"),
@@ -86,11 +86,12 @@ describe("pinAndroidVersion", () => {
     expect(result.syncedPaths).toHaveLength(1);
   });
 
-  it("pins from the current gateway version without carrying prerelease suffixes", () => {
+  it("pins from the current mobile gateway version", () => {
     const rootDir = writeAndroidFixture({
       version: "2026.6.2",
       versionCode: 2026060201,
-      packageVersion: "2026.6.5-beta.3",
+      mobileVersion: "2026.6.5",
+      packageVersion: "2026.9.9",
       prefix: "openclaw-android-pin-",
     });
 
@@ -104,7 +105,7 @@ describe("pinAndroidVersion", () => {
 
     expect(result.nextVersion).toBe("2026.6.5");
     expect(result.nextVersionCode).toBe(2026060501);
-    expect(result.packageVersion).toBe("2026.6.5-beta.3");
+    expect(result.gatewayVersion).toBe("2026.6.5");
     expect(resolveAndroidVersion(rootDir).canonicalVersion).toBe("2026.6.5");
   });
 

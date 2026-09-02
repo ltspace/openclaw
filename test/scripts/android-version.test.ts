@@ -1,11 +1,11 @@
 // Android Version tests cover android version script behavior.
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   canonicalAndroidVersionCode,
   extractChangelogSection,
-  normalizeGatewayVersionToPinnedAndroidVersion,
   normalizePinnedAndroidVersion,
   renderAndroidReleaseNotes,
   renderAndroidVersionProperties,
@@ -180,16 +180,7 @@ describe("resolveAndroidVersion", () => {
   });
 });
 
-describe("gateway version normalization", () => {
-  it("keeps stable gateway release values", () => {
-    expect(normalizeGatewayVersionToPinnedAndroidVersion("2026.6.2")).toBe("2026.6.2");
-  });
-
-  it("strips prerelease suffixes when pinning from gateway version", () => {
-    expect(normalizeGatewayVersionToPinnedAndroidVersion("2026.6.2-beta.3")).toBe("2026.6.2");
-    expect(normalizeGatewayVersionToPinnedAndroidVersion("2026.6.2-alpha.1")).toBe("2026.6.2");
-  });
-
+describe("gateway version ownership", () => {
   it("derives the default Play-compatible versionCode from the pinned version", () => {
     expect(canonicalAndroidVersionCode("2026.6.2")).toBe(2026060201);
   });
@@ -200,24 +191,16 @@ describe("gateway version normalization", () => {
     );
   });
 
-  it("rejects impossible gateway release versions", () => {
-    expect(() => normalizeGatewayVersionToPinnedAndroidVersion("2026.13.2-beta.1")).toThrow(
-      "Expected YYYY.M.PATCH",
-    );
-    expect(() =>
-      normalizeGatewayVersionToPinnedAndroidVersion("2026.6.2-beta.9007199254740993"),
-    ).toThrow("Expected YYYY.M.PATCH");
-  });
-
-  it("reads and normalizes the root package version for Android releases", () => {
+  it("reads the mobile version independently of package.json", () => {
     const rootDir = writeAndroidFixture({
       version: "2026.6.2",
       versionCode: 2026060201,
-      packageVersion: "2026.6.5-beta.3",
+      mobileVersion: "2026.6.5",
+      packageVersion: "2026.9.9",
     });
 
     expect(resolveGatewayVersionForAndroidRelease(rootDir)).toEqual({
-      packageVersion: "2026.6.5-beta.3",
+      gatewayVersion: "2026.6.5",
       pinnedAndroidVersion: "2026.6.5",
       versionCode: 2026060501,
     });
@@ -272,7 +255,7 @@ describe("renderAndroidReleaseNotes", () => {
 });
 
 describe("syncAndroidVersioning", () => {
-  it("syncs generated Gradle version properties and Fastlane release notes", () => {
+  it("syncs generated Gradle version properties without owning mobile release notes", () => {
     const rootDir = writeAndroidFixture({
       version: "2026.6.2",
       versionCode: 2026060201,
@@ -282,7 +265,12 @@ describe("syncAndroidVersioning", () => {
 
     expect(syncAndroidVersioning({ mode: "write", rootDir }).updatedPaths).toEqual([
       path.join(rootDir, "apps/android/Config/Version.properties"),
-      path.join(rootDir, "apps/android/fastlane/metadata/android/en-US/release_notes.txt"),
     ]);
+    expect(
+      fs.readFileSync(
+        path.join(rootDir, "apps/android/fastlane/metadata/android/en-US/release_notes.txt"),
+        "utf8",
+      ),
+    ).toBe("stale notes\n");
   });
 });

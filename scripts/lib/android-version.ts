@@ -1,6 +1,7 @@
 // Android Version script supports OpenClaw repository automation.
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { readMobileVersionManifest } from "./mobile-version.ts";
 import { parseReleaseVersion } from "./release-version.mjs";
 
 const ANDROID_VERSION_FILE = "apps/android/version.json";
@@ -53,22 +54,6 @@ export function normalizePinnedAndroidVersion(rawVersion: string): string {
   return pinnedVersion;
 }
 
-export function normalizeGatewayVersionToPinnedAndroidVersion(rawVersion: string): string {
-  const trimmed = rawVersion.trim().replace(/^v/u, "");
-  if (!trimmed) {
-    throw new Error("Missing root package.json version.");
-  }
-
-  const parsed = parseReleaseVersion(trimmed);
-  if (!parsed) {
-    throw new Error(
-      `Invalid gateway version '${rawVersion}'. Expected YYYY.M.PATCH, YYYY.M.PATCH-alpha.N, YYYY.M.PATCH-beta.N, or YYYY.M.PATCH-N.`,
-    );
-  }
-
-  return parsed.baseVersion;
-}
-
 export function canonicalAndroidVersionCode(version: string): number {
   const canonicalVersion = normalizePinnedAndroidVersion(version);
   const [year, rawMonth, rawPatch] = canonicalVersion.split(".");
@@ -114,25 +99,15 @@ export function normalizeAndroidVersionCode(rawVersionCode: number, version: str
   return rawVersionCode;
 }
 
-function readRootPackageVersion(rootDir = path.resolve(".")): string {
-  const packageJsonPath = path.join(rootDir, "package.json");
-  const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
-  const version = typeof parsed.version === "string" ? parsed.version.trim() : "";
-  if (!version) {
-    throw new Error(`Missing package.json version in ${packageJsonPath}.`);
-  }
-  return version;
-}
-
 export function resolveGatewayVersionForAndroidRelease(rootDir = path.resolve(".")): {
-  packageVersion: string;
+  gatewayVersion: string;
   pinnedAndroidVersion: string;
   versionCode: number;
 } {
-  const packageVersion = readRootPackageVersion(rootDir);
-  const pinnedAndroidVersion = normalizeGatewayVersionToPinnedAndroidVersion(packageVersion);
+  const gatewayVersion = readMobileVersionManifest(rootDir).version;
+  const pinnedAndroidVersion = normalizePinnedAndroidVersion(gatewayVersion);
   return {
-    packageVersion,
+    gatewayVersion,
     pinnedAndroidVersion,
     versionCode: canonicalAndroidVersionCode(pinnedAndroidVersion),
   };
@@ -154,13 +129,19 @@ export function writeAndroidVersionManifest(
     versionCode ?? canonicalAndroidVersionCode(normalizedVersion),
     normalizedVersion,
   );
-  const nextContent = `${JSON.stringify(
+  const nextContent = renderAndroidVersionManifest(normalizedVersion, normalizedVersionCode);
+  writeFileSync(versionFilePath, nextContent, "utf8");
+  return versionFilePath;
+}
+
+export function renderAndroidVersionManifest(version: string, versionCode: number): string {
+  const normalizedVersion = normalizePinnedAndroidVersion(version);
+  const normalizedVersionCode = normalizeAndroidVersionCode(versionCode, normalizedVersion);
+  return `${JSON.stringify(
     { version: normalizedVersion, versionCode: normalizedVersionCode },
     null,
     2,
   )}\n`;
-  writeFileSync(versionFilePath, nextContent, "utf8");
-  return versionFilePath;
 }
 
 export function resolveAndroidVersion(rootDir = path.resolve(".")): ResolvedAndroidVersion {
@@ -218,8 +199,9 @@ export function extractChangelogSection(content: string, heading: string): strin
 export function renderAndroidReleaseNotes(
   version: Pick<ResolvedAndroidVersion, "canonicalVersion">,
   changelogContent: string,
+  options?: { candidateHeadings?: string[]; sourcePath?: string },
 ): string {
-  const candidateHeadings = [version.canonicalVersion, "Unreleased"];
+  const candidateHeadings = options?.candidateHeadings ?? [version.canonicalVersion, "Unreleased"];
 
   for (const heading of candidateHeadings) {
     const body = extractChangelogSection(changelogContent, heading);
@@ -229,7 +211,7 @@ export function renderAndroidReleaseNotes(
   }
 
   throw new Error(
-    `Unable to find Android changelog notes for ${version.canonicalVersion}. Add a matching section to ${ANDROID_CHANGELOG_FILE}.`,
+    `Unable to find Android changelog notes for ${version.canonicalVersion}. Add a matching section to ${options?.sourcePath ?? ANDROID_CHANGELOG_FILE}.`,
   );
 }
 
@@ -262,9 +244,7 @@ export function syncAndroidVersioning(params?: {
   const mode = params?.mode ?? "write";
   const rootDir = path.resolve(params?.rootDir ?? ".");
   const version = resolveAndroidVersion(rootDir);
-  const changelogContent = readFileSync(version.changelogPath, "utf8");
   const nextVersionProperties = renderAndroidVersionProperties(version);
-  const nextReleaseNotes = renderAndroidReleaseNotes(version, changelogContent);
   const updatedPaths: string[] = [];
 
   if (
@@ -276,17 +256,6 @@ export function syncAndroidVersioning(params?: {
     })
   ) {
     updatedPaths.push(version.versionPropertiesPath);
-  }
-
-  if (
-    syncFile({
-      mode,
-      path: version.releaseNotesPath,
-      nextContent: nextReleaseNotes,
-      label: "Android release notes",
-    })
-  ) {
-    updatedPaths.push(version.releaseNotesPath);
   }
 
   return { updatedPaths };

@@ -4,13 +4,18 @@ Android release builds use pinned app metadata instead of auto-bumping `build.gr
 
 ## Version model
 
-- `apps/android/version.json` is the source of truth.
+- `apps/mobile/version.json` is the shared mobile gateway version source.
+- `apps/android/version.json` is the committed Android store version/code source.
 - `version` is the Play `versionName` and uses CalVer: `YYYY.M.D`.
 - `versionCode` uses `YYYYMMDDNN`, where phone build number `NN` is `01` through `49`.
 - The matching Wear APK reserves `51` through `99` by adding `50` to the pinned phone `versionCode`; Play requires a unique code per form factor under the shared application ID.
 - `apps/android/Config/Version.properties` is generated from `version.json` and read by Gradle.
-- `apps/android/CHANGELOG.md` is the Android-only changelog and release-note source.
-- `apps/android/fastlane/metadata/android/en-US/release_notes.txt` is generated from the changelog.
+- `apps/ios/CHANGELOG.md` supplies shared mobile release notes.
+- `apps/android/fastlane/metadata/android/en-US/release_notes.txt` is generated
+  from the pre-cut iOS `Unreleased` section, then checked against the exact
+  App Store section during iOS finalization.
+- `apps/android/CHANGELOG.md` remains historical Android release documentation;
+  the shared mobile cutter does not modify or read it.
 
 Examples:
 
@@ -32,23 +37,12 @@ MATCH_PASSWORD=<signing repo password> pnpm android:release:signing:sync:pull
 pnpm android:release:preflight
 ```
 
-## Release-note resolution order
-
-When generating `apps/android/fastlane/metadata/android/en-US/release_notes.txt`, the tooling reads the first available changelog section in this order:
-
-1. exact pinned version, for example `## 2026.6.2`
-2. `## Unreleased`
-
-Recommended workflow:
-
-- while iterating on a Google Play release train, keep pending notes under `## Unreleased`
-- before the production release, move or copy the final notes under `## <pinned version>` and run sync again
-
 ## Release Workflow
 
-1. Pin Android to the intended release version.
-2. Run `pnpm android:version:sync`.
-3. Update `apps/android/CHANGELOG.md`, then run `pnpm android:version:sync` again if needed.
+1. Add shared mobile notes under `apps/ios/CHANGELOG.md` `## Unreleased`.
+2. Prepare the intended mobile version:
+   `node --import tsx scripts/mobile-release-version.ts --prepare --version 2026.8.2 --write`.
+3. Run the live iOS planner, then finalize the shared release with its JSON plan.
 4. Run `MATCH_PASSWORD=<signing repo password> pnpm android:release:signing:sync:pull` to materialize encrypted Android signing assets from `apps-signing`.
 5. Run `pnpm android:release:preflight` to validate Play auth, signing, synced versioning, and release notes.
 6. Run `pnpm android:screenshots` to refresh phone and Wear OS Google Play
